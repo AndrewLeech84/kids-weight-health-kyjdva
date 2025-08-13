@@ -1,3 +1,4 @@
+
 import { Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { colors } from '../styles/commonStyles';
 
@@ -20,7 +21,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.primary,
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 10,
     marginTop: 10,
     width: '100%',
     boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)',
@@ -33,5 +34,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+    fontFamily: 'Roboto_700Bold',
   },
 });
