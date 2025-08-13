@@ -1,6 +1,6 @@
 
-import { useMemo, useState } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, LayoutChangeEvent } from 'react-native';
 import { router } from 'expo-router';
 import { colors, commonStyles, buttonStyles } from '../styles/commonStyles';
 import GrowthChart from '../components/GrowthChart';
@@ -12,11 +12,25 @@ import ResourceLinks from '../components/ResourceLinks';
 
 type Sex = 'male' | 'female';
 
+type SectionKeys = 'inputs' | 'risks' | 'intervention';
+
 export default function AssessScreen() {
   const [sex, setSex] = useState<Sex>('male');
   const [ageMonthsInput, setAgeMonthsInput] = useState<string>('6');
   const [weightInput, setWeightInput] = useState<string>('7.5');
   const [selectedRisks, setSelectedRisks] = useState<string[]>([]);
+
+  const scrollRef = useRef<ScrollView | null>(null);
+  const anchors = useRef<Record<SectionKeys, number>>({ inputs: 0, risks: 0, intervention: 0 });
+
+  const onSetAnchor = (key: SectionKeys) => (e: LayoutChangeEvent) => {
+    anchors.current[key] = e.nativeEvent.layout.y;
+  };
+
+  const scrollTo = (key: SectionKeys) => {
+    const y = anchors.current[key] || 0;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+  };
 
   const ageMonths = useMemo(() => {
     const v = parseFloat(ageMonthsInput.replace(',', '.'));
@@ -56,23 +70,84 @@ export default function AssessScreen() {
   const nextStepsText = () => {
     if (!weightKg || weightKg <= 0) return '';
     if (result.classification === 'within') {
-      if (moreThanOneRisk) {
-        return 'Within range. More than 1 risk factor selected — check weight every 3 months and provide supports as needed.';
+      if (riskCount >= 1) {
+        return 'Within range but risk factors present — consider proceeding to intervention or provide supports and reassess in 3 months.';
       }
       return 'Within range. Reassess height and weight in 3 months or sooner if concerns arise.';
     }
     if (result.classification === 'under') {
-      return 'Under 15th centile. If repeated at next visit, proceed to intervention.';
+      return 'Under 15th centile. Validate measurements and reassess in 3 months. Proceed to intervention sooner if risk factors present.';
     }
     if (result.classification === 'over') {
-      return 'Over 85th centile. If repeated at next visit, proceed to intervention.';
+      return 'Over 85th centile. Validate measurements and reassess in 3 months. Proceed to intervention sooner if risk factors present.';
     }
     return '';
   };
 
+  const showIntervention = result.classification !== 'within' || riskCount >= 1;
+
+  const renderNextActions = () => {
+    const buttons: Array<{ text: string; variant: any; icon: any; onPress: () => void }> = [];
+
+    const goInputs = () => scrollTo('inputs');
+    const goRisks = () => scrollTo('risks');
+    const goIntervention = () => {
+      if (!showIntervention) {
+        console.log('Intervention section not visible yet.');
+      }
+      scrollTo('intervention');
+    };
+
+    if (result.classification === 'within') {
+      if (riskCount === 0) {
+        buttons.push(
+          { text: 'Reassess in 3 Months', variant: 'success', icon: 'time-outline', onPress: () => console.log('Plan: Reassess in 3 months') },
+          { text: 'Validate Measurements', variant: 'outline', icon: 'checkmark-circle-outline', onPress: goInputs },
+          { text: 'Review Risk Factors', variant: 'outline', icon: 'list-outline', onPress: goRisks },
+        );
+      } else {
+        buttons.push(
+          { text: 'Proceed to Intervention', variant: 'warning', icon: 'medkit-outline', onPress: goIntervention },
+          { text: 'Reassess in 3 Months', variant: 'success', icon: 'time-outline', onPress: () => console.log('Plan: Reassess in 3 months') },
+          { text: 'Review Risk Factors', variant: 'outline', icon: 'list-outline', onPress: goRisks },
+        );
+      }
+    } else {
+      if (riskCount >= 1) {
+        buttons.push(
+          { text: `Proceed to Intervention (${result.classification === 'under' ? 'Undergrowth' : 'Overgrowth'})`, variant: 'warning', icon: 'medkit-outline', onPress: goIntervention },
+          { text: 'Validate & Reassess in 3 Months', variant: 'success', icon: 'repeat-outline', onPress: () => console.log('Plan: Validate and reassess') },
+          { text: 'Refer to Specialist', variant: 'danger', icon: 'person-outline', onPress: goIntervention },
+        );
+      } else {
+        buttons.push(
+          { text: 'Validate & Reassess in 3 Months', variant: 'success', icon: 'repeat-outline', onPress: () => console.log('Plan: Validate and reassess') },
+          { text: 'Proceed to Intervention', variant: 'outline', icon: 'medkit-outline', onPress: goIntervention },
+          { text: 'Review Risk Factors', variant: 'outline', icon: 'list-outline', onPress: goRisks },
+        );
+      }
+    }
+
+    return (
+      <View style={[commonStyles.card, { marginTop: 12 }]}>
+        <Text style={styles.sectionTitle}>Next best step</Text>
+        <Text style={[commonStyles.text, { textAlign: 'left', fontSize: 14, marginBottom: 8 }]}>{nextStepsText()}</Text>
+        {buttons.map((b, idx) => (
+          <Button
+            key={b.text + idx}
+            text={b.text}
+            onPress={b.onPress}
+            variant={b.variant as any}
+            leftIconName={b.icon}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <View style={commonStyles.container}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={[styles.headerRow]}>
           <TouchableOpacity
             onPress={() => router.back()}
@@ -85,7 +160,7 @@ export default function AssessScreen() {
           <View style={{ width: 70, height: 40, display: 'contents' }} />
         </View>
 
-        <View style={[commonStyles.card]}>
+        <View onLayout={onSetAnchor('inputs')} style={[commonStyles.card]}>
           <Text style={styles.label}>Sex</Text>
           <View style={styles.segment}>
             <TouchableOpacity
@@ -135,6 +210,8 @@ export default function AssessScreen() {
           </View>
         </View>
 
+        {renderNextActions()}
+
         <View style={[commonStyles.card, { marginTop: 12 }]}>
           <Text style={styles.sectionTitle}>Growth Chart (Weight vs Age)</Text>
           <GrowthChart
@@ -150,7 +227,7 @@ export default function AssessScreen() {
           </Text>
         </View>
 
-        <View style={[commonStyles.card, { marginTop: 12 }]}>
+        <View onLayout={onSetAnchor('risks')} style={[commonStyles.card, { marginTop: 12 }]}>
           <Text style={styles.sectionTitle}>Risk Factors (bio-psycho-social)</Text>
           {riskCategories.map((cat) => (
             <View key={cat.key} style={{ marginBottom: 12 }}>
@@ -170,13 +247,21 @@ export default function AssessScreen() {
             <Text style={[commonStyles.text, { textAlign: 'left', fontSize: 14 }]}>
               Selected risk factors: {riskCount}. {moreThanOneRisk ? 'If >1 risk factor then weight should be checked every 3 months and supports put in place.' : 'Select relevant risks to inform follow-up.'}
             </Text>
+            {riskCount >= 1 ? (
+              <Button
+                text="Proceed to Intervention"
+                onPress={() => scrollTo('intervention')}
+                variant="warning"
+                leftIconName="medkit-outline"
+              />
+            ) : null}
           </View>
         </View>
 
-        {result.classification !== 'within' && (
-          <View style={[commonStyles.card, { marginTop: 12 }]}>
+        {showIntervention && (
+          <View onLayout={onSetAnchor('intervention')} style={[commonStyles.card, { marginTop: 12 }]}>
             <Text style={styles.sectionTitle}>
-              Step 3: Intervention — {result.classification === 'under' ? 'Undergrowth' : 'Overgrowth'}
+              Step 3: Intervention — {result.classification === 'under' ? 'Undergrowth' : result.classification === 'over' ? 'Overgrowth' : 'Risk factors present'}
             </Text>
 
             {result.classification === 'under' ? (
@@ -192,10 +277,6 @@ export default function AssessScreen() {
                 <Text style={styles.interventionHeader}>Nutritional optimisation</Text>
                 <Text style={styles.interventionText}>
                   - Consider paediatric oral nutritional supplements where clinically indicated.
-                </Text>
-                <Text style={styles.interventionHeader}>Follow-up and referral</Text>
-                <Text style={styles.interventionText}>
-                  - Continue intervention for 3 months. Consider Medicare care plan eligibility to support allied health referrals. Paediatricians are specialists (not allied health).
                 </Text>
               </>
             ) : (
@@ -216,15 +297,31 @@ export default function AssessScreen() {
                 <Text style={styles.interventionText}>
                   - Consider supplementation only when clinically indicated; liaise with dietetics if unsure.
                 </Text>
-                <Text style={styles.interventionHeader}>Follow-up and referral</Text>
-                <Text style={styles.interventionText}>
-                  - Continue intervention for 3 months. Consider Medicare care plan eligibility to support allied health referrals. Paediatricians are specialists (not allied health).
-                </Text>
               </>
             )}
 
+            <Text style={styles.interventionHeader}>Follow-up and referral</Text>
+            <Text style={styles.interventionText}>
+              - Continue intervention for 3 months, then review. If growth metrics do not improve, consider referral to appropriate allied health services and paediatric specialist.
+            </Text>
+
             <View style={{ marginTop: 10 }}>
               <ResourceLinks />
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              <Button
+                text="Continue Intervention for 3 Months"
+                onPress={() => console.log('Plan: Continue intervention for 3 months')}
+                variant="success"
+                leftIconName="calendar-outline"
+              />
+              <Button
+                text="Schedule Review / Consider Referral"
+                onPress={() => console.log('Plan: Review and consider referral')}
+                variant="danger"
+                leftIconName="walk-outline"
+              />
             </View>
           </View>
         )}
@@ -237,7 +334,10 @@ export default function AssessScreen() {
               setAgeMonthsInput('6');
               setWeightInput('7.5');
               setSelectedRisks([]);
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
             }}
+            variant="secondary"
+            leftIconName="refresh-outline"
             style={[buttonStyles.backButton, { backgroundColor: colors.primary }]}
           />
         </View>

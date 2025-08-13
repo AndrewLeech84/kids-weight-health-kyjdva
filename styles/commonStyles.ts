@@ -10,6 +10,10 @@ export const colors = {
   text: '#e3e3e3',
   grey: '#90CAF9',
   card: '#193cb8',
+  success: '#2e7d32',
+  warning: '#ef6c00',
+  danger: '#c62828',
+  info: '#0288d1',
 };
 
 export const buttonStyles = StyleSheet.create({
